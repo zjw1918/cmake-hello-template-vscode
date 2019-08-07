@@ -8,6 +8,7 @@ aux_source_directory(. src_dir)
 aux_source_directory(func func_dir)
 
 add_subdirectory(parse)
+add_subdirectory(parse_spo_pr)
 
 add_executable(Hello ${src_dir} ${func_dir})
 
@@ -15,5 +16,9 @@ set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
 include(CPack)
 
-target_link_libraries(Hello parse)
+target_link_libraries(
+    Hello 
+    parse 
+    parse_spo_pr
+)
 
