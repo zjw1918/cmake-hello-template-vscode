@@ -1,20 +1,23 @@
 //#include <math.h>
 #include <iostream> 
-//#include <stdio.h>
+//#include <stdio>
 #include "stages.h"
 #include "dwt.h"
 
 using namespace std;
 using namespace splab;
 
-//SAO2_InPara InPara;
-//SAO2_OutPara OutPara;
-//Proc_Para ProcPara;
+SAO2_InPara InPara;
+SAO2_OutPara OutPara;
+Proc_Para ProcPara;
 
 AlgData_t AccMSum[RESULT_SAVED_MINUTES];
 AlgData_t Spo2MSum[RESULT_SAVED_MINUTES];
 AlgData_t HrMSum[RESULT_SAVED_MINUTES];
 AlgData_t HrMSumTh[RESULT_SAVED_MINUTES];
+AlgData_t Spo2Bck[24 * 60 * 60];
+uint8_t HeartRateBck[24 * 60 * 60];
+
 
 AlgData_t WaveletProcbuf[300];
 AlgData_t WaveletPara[RESULT_SAVED_MINUTES * 2];
@@ -514,7 +517,7 @@ int fix_Spo2(AlgData_t* Spo2, int inlen, int procid,int proclen, AlgData_t Vldth
 
 	int edpoint = inlen;
 	AlgData_t edmax = Vldth + 1;
-	for (int j = procid + 1; j < MIN(inlen,procid + proclen); j++)
+	for (int j = procid; j < MIN(inlen,procid + proclen); j++)
 	{
 		if (Spo2[j] <= 37)
 		{
@@ -542,20 +545,30 @@ int fix_Spo2(AlgData_t* Spo2, int inlen, int procid,int proclen, AlgData_t Vldth
 		}
 	}
 
-	AlgData_t stepval = (edmax - bgmax) / (edpoint - bgpoint);
-	int tcnt = 1;
-	for (int j = bgpoint + 1; j < edpoint; j++)
+	if (edpoint - bgpoint >= 300)
 	{
-		if (bgmax + tcnt*stepval > Spo2[j] && Spo2[j] < Vldth + 1)
+		for (int j = bgpoint + 1; j < edpoint; j++)
 		{
-			Spo2[j] = bgmax + tcnt*stepval;
-			tcnt++;
+			Spo2[j] = 0;
 		}
-		else
+	}
+	else
+	{
+		AlgData_t stepval = (edmax - bgmax) / (edpoint - bgpoint);
+		int tcnt = 1;
+		for (int j = bgpoint + 1; j < edpoint; j++)
 		{
-			stepval = (edmax - Spo2[j]) / (edpoint - j);
-			bgmax = Spo2[j];
-			tcnt = 1;
+			if (bgmax + tcnt*stepval > Spo2[j] && Spo2[j] < Vldth + 1)
+			{
+				Spo2[j] = bgmax + tcnt*stepval;
+				tcnt++;
+			}
+			else
+			{
+				stepval = (edmax - Spo2[j]) / (edpoint - j);
+				bgmax = Spo2[j];
+				tcnt = 1;
+			}
 		}
 	}
 
@@ -1129,7 +1142,7 @@ void get_Spo2Vldlen(AlgData_t *Spo2, uint8_t *Acc, uint8_t *Hr, int inlen, AlgDa
 
 void smoothMinSpo(AlgData_t *Spo2, uint8_t *Acc, int inlen, AlgData_t VldSpo2Max,int count)
 {
-	AlgData_t mx = 10;//�����СѪ��ֵ��ֵ���ޣ���ʱ�趨Ϊ10
+	AlgData_t mx = 10;//×î´ó×îÐ¡ÑªÑõÖµ²îÖµÃÅÏÞ£¬ÔÝÊ±Éè¶¨Îª10
 	AlgData_t minSpo = 100;
 	int minPoint = 0;
 	AlgData_t aroundMinSpo_minSpo = 100;
@@ -1689,6 +1702,10 @@ int get_Largecnt(AlgData_t *input, int inlen, AlgData_t threshold)
 
 AlgData_t get_threshold(AlgData_t* in, int inlen, AlgData_t baseval, int Vldlen, AlgData_t highth, AlgData_t lowth, AlgData_t step)
 {
+	if (step == 0 || baseval == 0)
+	{
+		return baseval;
+	}
 	AlgData_t Baserate = 1;
 	int cnt = get_Largecnt(in, inlen, Baserate*baseval);
 	while (cnt > highth * Vldlen)
@@ -1701,7 +1718,12 @@ AlgData_t get_threshold(AlgData_t* in, int inlen, AlgData_t baseval, int Vldlen,
 	{
 		Baserate -= step;
 		cnt = get_Largecnt(in, inlen, Baserate*baseval);
+		if (Baserate <= 0)
+		{
+			Baserate = step;
+		}
 	}
+	printf("%f\n, ", Baserate);
 	return Baserate * baseval;
 }
 
@@ -1731,6 +1753,10 @@ int get_Vldmean(AlgData_t *Spo2M, AlgData_t *HrM, AlgData_t *AccM, uint8_t *stat
 	Accmean = Accmean / vldcnt;
 	Hrmean = Hrmean / vldcnt;
 	Spo2mean = Spo2mean / vldcnt;
+	if (Accmean == 0)
+	{
+		Accmean = 5;
+	}
 	return 0;
 }
 
@@ -2145,7 +2171,7 @@ void get_wakestatus(AlgData_t *AccM, AlgData_t *Spo2, int inlen, AlgData_t Accme
 	AccMwakethreshold = MIN(AccMwakethreshold, 25);
 
 	AlgData_t Spo2Maxmean = get_Spo2_mean(Spo2, inlen * 60, 90);
-	//������˯�׶�
+	//´¦ÀíÈëË¯½×¶Î
 	int i = 0;
 	int tc0 = 0;
 	for (; i < inlen - 5; i++)
@@ -2333,7 +2359,7 @@ void get_sleepstatus(SAO2_InPara *Inpara, Proc_Para *Procpara, SAO2_OutPara *Out
 		return;
 	}
 
-	//����Acc�ж�Wake
+	//¸ù¾ÝAccÅÐ¶ÏWake
 	get_wakestatus(AccM, Spo2, MinuteCnt, AccMmean, vldcnt, status);
 
 	vldcnt = 0;
@@ -2357,7 +2383,7 @@ void get_sleepstatus(SAO2_InPara *Inpara, Proc_Para *Procpara, SAO2_OutPara *Out
 	}
 
 
-	//����HR�ж�REM
+	//¸ù¾ÝHRÅÐ¶ÏREM
 	int flg = 0;
 	//get_REM(HrM, Spo2M, tmpSEcnt, MinuteCnt, HrMmean, Spo2Mmean, vldcnt, flg, status);
 	get_REM(HrM, Spo2M, tmpSEcnt, MinuteCnt, HrMmean, Spo2Mmean, vldcnt, flg, status);
@@ -2400,7 +2426,7 @@ void get_sleepstatus(SAO2_InPara *Inpara, Proc_Para *Procpara, SAO2_OutPara *Out
 
 	}
 
-	//����HR��ACC�ж�N1 N2
+	//¸ù¾ÝHRºÍACCÅÐ¶ÏN1 N2
 	get_deepsleep(AccM, HrM, MinuteCnt, AccMmean, HrMmean, vldcnt, status);
 
 	for (int i = 1; i < MinuteCnt; i++)
@@ -2578,7 +2604,7 @@ int get_StaticResult(SAO2_InPara *Inpara, Proc_Para *Procpara,SAO2_OutPara *Outp
 }
 
 
-//Spo2 ����
+//Spo2 ºó´¦Àí
 
 void Init_Para(SAO2_InPara *InPara, Proc_Para *Procpara, SAO2_OutPara *Outpara)
 {
@@ -2592,6 +2618,60 @@ void Init_Para(SAO2_InPara *InPara, Proc_Para *Procpara, SAO2_OutPara *Outpara)
 	Outpara->Static.prArr = InPara->HeartRate;
 	Outpara->Static.handOffArr = HandOffVect;
 }
+
+void rebckSpo2(AlgData_t* Spo2new, unsigned char* Hrnew, AlgData_t* Spo2old, unsigned char* Hrold, int len)
+{
+	for (int i = 0; i < len;)
+	{
+		if (Spo2new[i] > 0)
+		{
+			i++;
+		}
+		else
+		{
+			if (Spo2old[i] <= 37)
+			{
+				i++;
+			}
+			else
+			{
+				int ozflg = 0;
+				for (int j = i; j < MIN(len, i + 300); j++)
+				{
+					if (Spo2old[j] <= 37)
+					{
+						ozflg = 1;
+						break;
+					}
+					if (j == len - 1)
+					{
+						ozflg = 1;
+						i = len - 1;
+					}
+				}
+				if (ozflg == 1)
+				{
+					i++;
+				}
+				else
+				{
+					for (int j = i; j < len; j++)
+					{
+						if (Spo2new[j] > 0)
+						{
+							i = j;
+							break;
+						}
+						Spo2new[j] = Spo2old[j];
+						Hrnew[j] = Hrold[j];
+						i = j;
+					}
+				}
+			}
+		}
+	}
+}
+
 
 void Proc_Schedule(SAO2_InPara *InPara, Proc_Para *Procpara, SAO2_OutPara *OutPara)
 {
@@ -2607,6 +2687,9 @@ void Proc_Schedule(SAO2_InPara *InPara, Proc_Para *Procpara, SAO2_OutPara *OutPa
 		return;
 	}
 	Init_Para(InPara, Procpara, OutPara);
+
+	memcpy(Spo2Bck, Spo2, 4*inlen);
+	memcpy(HeartRateBck, Hr, inlen);
 
 	proc_Acc(Acc, inlen);
 
@@ -2745,9 +2828,9 @@ void parse_pr_spo2(char* data_in, int data_len, void* pr_spo2_result)
 	//SAO2_STATIC_RESULT* SAO2Static = (SAO2_STATIC_RESULT*)malloc(sizeof(SAO2_STATIC_RESULT));
 	//memset((char*)SAO2Static, 0, sizeof(SAO2_STATIC_RESULT));
 
-	SAO2_InPara* InPara = (SAO2_InPara*)malloc(sizeof(SAO2_InPara));
-	SAO2_OutPara* OutPara = (SAO2_OutPara*)malloc(sizeof(SAO2_OutPara));
-	Proc_Para* ProcPara = (Proc_Para*)malloc(sizeof(Proc_Para));
+	//SAO2_InPara* InPara = (SAO2_InPara*)malloc(sizeof(SAO2_InPara));
+	//SAO2_OutPara* OutPara = (SAO2_OutPara*)malloc(sizeof(SAO2_OutPara));
+	//Proc_Para* ProcPara = (Proc_Para*)malloc(sizeof(Proc_Para));
 
 	startsp = 4;
 	data_in_startime = *((unsigned int*)data_in + startsp / sizeof(unsigned int)); // start time of data_in
@@ -2830,14 +2913,14 @@ void parse_pr_spo2(char* data_in, int data_len, void* pr_spo2_result)
 	}
 	spo2_analysis->time_start = spo2_analysis->time[0];
 	//spo2_analysis->duration = spo2_analysis->length_spo2;
-	InPara->len = spo2_analysis->length_spo2;
-	InPara->timeStart = spo2_analysis->time_start;
-	InPara->Spo2 = spo2_analysis->Spo2f;
-	InPara->HeartRate = spo2_analysis->pr;
-	InPara->AccFlg = spo2_analysis->acc;
+	InPara.len = spo2_analysis->length_spo2;
+	InPara.timeStart = spo2_analysis->time_start;
+	InPara.Spo2 = spo2_analysis->Spo2f;
+	InPara.HeartRate = spo2_analysis->pr;
+	InPara.AccFlg = spo2_analysis->acc;
 
-	Proc_Schedule(InPara, ProcPara, OutPara);
-	Unify_Result(spo2_analysis, OutPara);
+	Proc_Schedule(&InPara, &ProcPara, &OutPara);
+	Unify_Result(spo2_analysis, &OutPara);
 
 	//smooth proc
 	//Sao2Event_Detect(spo2_analysis, ODI_peak, SAO2Static, Spo2Matrixbck, HRMatrixbck);
@@ -2847,13 +2930,13 @@ void parse_pr_spo2(char* data_in, int data_len, void* pr_spo2_result)
 
 	//if (spo2_analysis->length_spo2 > 60 * 10 && spo2_analysis->handon_total_time > 60)
 	//{
-	//	//1��Screening SAO2EventCnt base sleep status
+	//	//1¡¢Screening SAO2EventCnt base sleep status
 	//	Screening_Event(spo2_analysis);
 	//	SAO2Static->diffThdLge3Cnts = spo2_analysis->SAO2EventCnt;
 	//	SAO2Static->diffThdLge3Pr = (float)SAO2Static->diffThdLge3Cnts * 3600.0 / spo2_analysis->handon_total_time;
 	//	spo2_analysis->diff_thd_lge3_cnts = SAO2Static->diffThdLge3Cnts;
 	//	spo2_analysis->diff_thd_lge3_pr = SAO2Static->diffThdLge3Pr;
-	//	//2��get spo2min base sleep status
+	//	//2¡¢get spo2min base sleep status
 	//	int len = spo2_analysis->SAO2ep - spo2_analysis->SAO2sp;
 	//	AlgData_t spo2minval;
 	//	int spo2minid;
@@ -2912,7 +2995,7 @@ void parse_pr_spo2(char* data_in, int data_len, void* pr_spo2_result)
 	//if (Spo2Matrixbck != NULL)       free(Spo2Matrixbck);
 	//if (HRMatrixbck != NULL)         free(HRMatrixbck);
 
-	if (InPara != NULL)         free(InPara);
-	if (OutPara != NULL)        free(OutPara);
-	if (ProcPara != NULL)       free(ProcPara);
+	//if (InPara != NULL)         free(InPara);
+	//if (OutPara != NULL)        free(OutPara);
+	//if (ProcPara != NULL)       free(ProcPara);
 }

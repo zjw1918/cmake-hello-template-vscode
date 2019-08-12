@@ -48,7 +48,7 @@ void read_from_path(const char *path)
     fclose(pFile);
     free(buffer);
 
-    printf("Done!\n");
+    printf("------------------------------Done!\n");
 }
 
 void read_dir(const char *basepath)
@@ -65,6 +65,7 @@ void read_dir(const char *basepath)
         return;
     }
 
+    int cnt = 0;
     while ((de = readdir(dr)) != NULL) {
         if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
         // printf("%s\n", de->d_name);
@@ -76,6 +77,7 @@ void read_dir(const char *basepath)
 
         // parse
         read_from_path(base);
+        printf("cnt: %d\n", cnt++);
     }
 
     closedir(dr);

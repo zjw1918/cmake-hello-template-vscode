@@ -7,19 +7,27 @@
 // #include "parse/parse.h"
 #include "util_file.h"
 
-
 int main(int, char **)
 {
     // printf("add: %d\n", add(1, 2));
     // show();
     // say_hello();
 
-    // const char *filepath = 
-    // "/Users/mega/Downloads/parse_error_190806/1_5b5106ce9f5454003cd60cbc_1532020525.bin";
-    // read_from_path(filepath);
+    // for (int i = 20 - 1; i >= 0; i--)
+    // {
+    //     const char *filepath =
+    //         "/Users/mega/A-file/py-bins/1_5c7c6056ac502e00668fdad3_1551630599.bin";
+    //     read_from_path(filepath);
+    // }
 
-    read_dir("/Users/mega/Downloads/parse_error_190806/");
+    for (int i = 10 - 1; i >= 0; i--)
+    {
+        const char *bin_dir = "/Users/mega/A-file/bins-pass/";
+        // const char *bin_dir = "/Users/mega/A-file/py-bins/";
+        read_dir(bin_dir);
+    }
+    
+
 
     return 0;
 }
-
