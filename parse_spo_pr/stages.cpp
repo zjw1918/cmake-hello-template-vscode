@@ -2737,7 +2737,19 @@ void Proc_Schedule(SAO2_InPara *InPara, Proc_Para *Procpara, SAO2_OutPara *OutPa
 	
 	get_sleepstatus(InPara, Procpara, OutPara);
 
-	get_StaticResult(InPara, Procpara, OutPara);
+	int sleepcnt = 0;
+	for (int i = 0; i < OutPara->MinuteCnt; i++)
+	{
+		if (OutPara->status[i] > 0)
+		{
+			sleepcnt++;
+		}
+	}
+
+	if (sleepcnt > 0)
+	{
+		get_StaticResult(InPara, Procpara, OutPara);
+	}
 }
 
 void Unify_Result(spo2_analysis_t* analysis_t, SAO2_OutPara* OutPara)
@@ -2761,6 +2773,8 @@ void Unify_Result(spo2_analysis_t* analysis_t, SAO2_OutPara* OutPara)
 		analysis_t->handoff.num++;
 		hanoffnum += 2;
 	}
+	analysis_t->startpos = OutPara->Static.startpos;
+	analysis_t->endpos = OutPara->Static.endpos;
 	analysis_t->duration = OutPara->Static.endpos;
 	analysis_t->time_start = OutPara->Static.timeStart;
 	analysis_t->spo2_average = (int)(OutPara->Static.Spo2Avg * 100);

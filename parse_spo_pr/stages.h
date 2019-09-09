@@ -166,9 +166,8 @@ typedef struct {
 	int length_status;
 	unsigned int bin_start_sec;
 	unsigned int bin_stop_sec;
-	//int SAO2sp;
-	//int SAO2ep;
-	//int SAO2EventCnt;
+	int startpos;
+	int endpos;
 }spo2_analysis_t;
 
 void parse_pr_spo2(char* data_in, int data_len, void* pr_spo2_result);
