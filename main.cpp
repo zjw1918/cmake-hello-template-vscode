@@ -20,12 +20,9 @@ int main(int, char **)
     //     read_from_path(filepath);
     // }
 
-    for (int i = 10 - 1; i >= 0; i--)
-    {
-        const char *bin_dir = "/Users/mega/A-file/bins-pass/";
-        // const char *bin_dir = "/Users/mega/A-file/py-bins/";
-        read_dir(bin_dir);
-    }
+    const char *bin_dir = "/Volumes/ssd_hub/Z-dev/bins/bins-pass/";
+    // const char *bin_dir = "/Users/mega/A-file/py-bins/";
+    read_dir(bin_dir);
     
 
 
