@@ -1,6 +1,7 @@
 //#include <math.h>
 #include <iostream> 
 //#include <stdio>
+
 #include "stages.h"
 #include "dwt.h"
 
@@ -118,6 +119,7 @@ AlgData_t get_Hr_mean(AlgData_t *input, int len)
 	}
 }
 
+
 void trim_rem(uint8_t* status, int inlenM)
 {
 	int firstsleepid = 0;
@@ -227,6 +229,8 @@ void trim_rem(uint8_t* status, int inlenM)
 		}
 	}
 }
+
+
 
 void proc_Acc(uint8_t *Acc, int inlen)
 {
@@ -527,7 +531,7 @@ int fix_Spo2(AlgData_t* Spo2, int inlen, int procid,int proclen, AlgData_t Vldth
 
 	int edpoint = inlen;
 	AlgData_t edmax = Vldth + 1;
-	for (int j = procid; j < MIN(inlen,procid + proclen); j++)
+	for (int j = procid + 1; j < MIN(inlen,procid + proclen); j++)
 	{
 		if (Spo2[j] <= 37)
 		{
@@ -581,6 +585,7 @@ int fix_Spo2(AlgData_t* Spo2, int inlen, int procid,int proclen, AlgData_t Vldth
 			}
 		}
 	}
+	
 
 	return edpoint + 1;
 }
@@ -591,9 +596,9 @@ void SmoothOffhand(AlgData_t* Spo2, unsigned char *Hr, AlgData_t VldSpo2Max, int
 	int disconlen = 0;
 	int conthrehold = 10;
 	AlgData_t Offhandval = 37;
-	for (int i = 0; i < inlen;)
+	for (int i = 1; i < inlen - 1;)
 	{
-		if (Spo2[i] <= Offhandval)
+		if (Spo2[i] <= Offhandval && (Spo2[i-1] > Offhandval || Spo2[i + 1] > Offhandval))
 		{
 			i = fix_Spo2(Spo2, inlen, i, inlen, VldSpo2Max);
 		}
@@ -870,7 +875,7 @@ void get_Spo2Vldlen(AlgData_t *Spo2, uint8_t *Acc, uint8_t *Hr, int inlen, AlgDa
 			if (tmpAccsum < 60)
 			{
 				disconlen++;
-				if (disconlen > 2)
+				if (disconlen > 30)
 				{
 					conlen = 0;
 					disconlen = 0;
@@ -1793,6 +1798,7 @@ void get_deepsleep(AlgData_t* AccM, AlgData_t* HrM, int inlen, AlgData_t Accmean
 		{
 			continue;
 		}
+		
 		if (AccM[i] < AccMdeepthreshold && HrM[i] < HrMdeepthreshold)
 		{
 			flg = 1;
@@ -2590,76 +2596,113 @@ int get_StaticResult(SAO2_InPara *Inpara, Proc_Para *Procpara,SAO2_OutPara *Outp
 	uint8_t *status = Outpara->status;
 
 	int vldSecond = 0;
+	int tmpi = 0;
+	AlgData_t minSpo2 = 100;
 
-	Static->Spo2Avg = 0;
-
-	Static->maxSpo2DownTime = 0;
-	Static->Spo2Avg = 0;
-	Static->Spo2Min = 100;
-	
-	Static->prMax = 0;
-	Static->prMin = 300;
-	Static->prAvg = 0;
-
-	Static->spo2Less60Time = 0;
-	Static->spo2Less70Time = 0;
-	Static->spo2Less80Time = 0;
-	Static->spo2Less85Time = 0;
-	Static->spo2Less90Time = 0;
-	Static->spo2Less95Time = 0;
-	
-	int vldSEcnt = 0;
+	int prAvg = 0;
+	int prMax = 0;
+	int prMin = 300;
+	float Spo2Avg = 0;
+	int spo2Less60Time = 0;
+	int spo2Less70Time = 0;
+	int spo2Less80Time = 0;
+	int spo2Less85Time = 0;
+	int spo2Less90Time = 0;
+	int spo2Less95Time = 0;
+	int maxSpo2DownTime = 0;
 	int SEcnt = 0;
+
+	int vldSEcnt = 0;
+
+	for (int i = 0; i < len; i++)
+	{
+		if (Spo2[i] > 37 && Hr[i] > 0)
+		{
+			vldSecond++;
+		}
+	}
+
+	if (vldSecond == 0)
+	{
+		return 1;
+	}
+
+	vldSecond = 0;
 	for (int mid = 0; mid < MinuteCnt; mid++)
 	{
 		if (status[mid] > STATUS_WAKE && status[mid] < STATUS_NOBODY)
 		{
 			int tmpid = mid * 60;
+			if (Spo2[tmpid] > 37 && Hr[tmpid] > 0)
+			{
+				vldSecond++;
+				if (vldSecond > 60)
+				{
+					break;
+				}
+			}
+		}
+	}
+
+	int StatusMin = -1; 
+	int StatusMax = 100;
+	if (vldSecond >= 60)
+	{
+		vldSecond = 0;
+		StatusMin = 0;
+		StatusMax = 6;
+	}
+
+	for (int mid = 0; mid < MinuteCnt; mid++)
+	{
+		if (status[mid] > StatusMin && status[mid] < StatusMax)
+		{
+			int tmpid = mid * 60;
 			for (int i = tmpid; i < tmpid + 60; i++)
 			{
-				if (Spo2[i] == 0 || Hr[i] == 0)
+				if (Spo2[i] < 37 || Hr[i] == 0)
 				{
 					continue;
 				}
 				vldSecond++;
-				Static->Spo2Avg += Spo2[i];
-				Static->prAvg += Hr[i];
-				if (Spo2[i] < Static->Spo2Min)
+				Spo2Avg += Spo2[i];
+				prAvg += Hr[i];
+				if (Spo2[i] < minSpo2)
 				{
-					Static->Spo2Min = Spo2[i];
+					minSpo2 = Spo2[i];
 				}
-				if (Hr[i] > Static->prMax)
+				if (Hr[i] > prMax)
 				{
-					Static->prMax = Hr[i];
+					prMax = Hr[i];
 				}
-				if (Hr[i] < Static->prMin)
+				if (Hr[i] < prMin)
 				{
-					Static->prMin = Hr[i];
+					prMin = Hr[i];
 				}
 
 				if (Spo2[i] < 95)
 				{
-					Static->spo2Less95Time++;
+					spo2Less95Time++;
 				}
 				if (Spo2[i] < 90)
 				{
-					Static->spo2Less90Time++;
+					spo2Less90Time++;
 				}
 				if (Spo2[i] < 85)
 				{
-					Static->spo2Less85Time++;
+					spo2Less85Time++;
 				}
 				if (Spo2[i] < 80)
 				{
-					Static->spo2Less80Time++;
+					spo2Less80Time++;
 				}
 				if (Spo2[i] < 70)
 				{
-					Static->spo2Less70Time++;
+					spo2Less70Time++;
 				}
 				if (Spo2[i] < 60)
 				{
-					Static->spo2Less60Time++;
+					spo2Less60Time++;
 				}
 			}
 			while (SEvect[SEcnt].startpos < tmpid - 30)
@@ -2673,9 +2716,9 @@ int get_StaticResult(SAO2_InPara *Inpara, Proc_Para *Procpara,SAO2_OutPara *Outp
 				{
 					SEvect[vldSEcnt].startpos = SEvect[SEcnt].startpos;
 					SEvect[vldSEcnt].len = SEvect[SEcnt].len;
-					if (Static->maxSpo2DownTime < SEvect[vldSEcnt].len)
+					if (maxSpo2DownTime < SEvect[vldSEcnt].len)
 					{
-						Static->maxSpo2DownTime = SEvect[vldSEcnt].len;
+						maxSpo2DownTime = SEvect[vldSEcnt].len;
 					}
 					vldSEcnt++;
 					SEcnt++;
@@ -2689,22 +2732,39 @@ int get_StaticResult(SAO2_InPara *Inpara, Proc_Para *Procpara,SAO2_OutPara *Outp
 		}
 	}
 
-	if (vldSecond == 0)
+	if (StatusMin == -1)
 	{
-		return 1;
+		Static->diffThdLge3Cnts = 0;
+		Static->diffThdLge3Pr = 0;
+		Static->maxSpo2DownTime = 0;
+	}
+	else
+	{
+		Static->diffThdLge3Cnts = vldSEcnt;
+		Static->diffThdLge3Pr = vldSEcnt * 3600.0 / vldSecond;
+		Static->maxSpo2DownTime = maxSpo2DownTime;
 	}
 
-	Static->Spo2Avg = Static->Spo2Avg / vldSecond;
-	Static->prAvg = Static->prAvg / vldSecond;
+	Static->prMax = prMax;
+	Static->prMin = prMin;
+	Static->Spo2Min = minSpo2;
 
-	Static->spo2Less60TimePercent = Static->spo2Less60Time * 100.0 / vldSecond;
-	Static->spo2Less70TimePercent = Static->spo2Less70Time * 100.0 / vldSecond;
-	Static->spo2Less80TimePercent = Static->spo2Less80Time * 100.0 / vldSecond;
-	Static->spo2Less85TimePercent = Static->spo2Less85Time * 100.0 / vldSecond;
-	Static->spo2Less90TimePercent = Static->spo2Less90Time * 100.0 / vldSecond;
-	Static->spo2Less95TimePercent = Static->spo2Less95Time * 100.0 / vldSecond;
-	Static->diffThdLge3Cnts = vldSEcnt;
-	Static->diffThdLge3Pr = vldSEcnt * 3600.0 / vldSecond;
+	Static->Spo2Avg = Spo2Avg / vldSecond;
+	Static->prAvg = prAvg / vldSecond;
+
+	Static->spo2Less60Time = spo2Less60Time;
+	Static->spo2Less70Time = spo2Less70Time;
+	Static->spo2Less80Time = spo2Less80Time;
+	Static->spo2Less85Time = spo2Less85Time;
+	Static->spo2Less90Time = spo2Less90Time;
+	Static->spo2Less95Time = spo2Less95Time;
+
+	Static->spo2Less60TimePercent = spo2Less60Time * 100.0 / vldSecond;
+	Static->spo2Less70TimePercent = spo2Less70Time * 100.0 / vldSecond;
+	Static->spo2Less80TimePercent = spo2Less80Time * 100.0 / vldSecond;
+	Static->spo2Less85TimePercent = spo2Less85Time * 100.0 / vldSecond;
+	Static->spo2Less90TimePercent = spo2Less90Time * 100.0 / vldSecond;
+	Static->spo2Less95TimePercent = spo2Less95Time * 100.0 / vldSecond;
 
 
 	printf("\n/***************Spo2EventCnt = %d, ODI3 = %f, minSpo2 = %f\n", Static->diffThdLge3Cnts, Static->diffThdLge3Pr, Static->Spo2Min);
@@ -2735,6 +2795,7 @@ int get_StaticResult(SAO2_InPara *Inpara, Proc_Para *Procpara,SAO2_OutPara *Outp
 	}
 	return 0;
 }
+
 
 //Spo2 ºó´¦Àí
 
@@ -2808,14 +2869,24 @@ void smooth_spo2_ODI(SAO2_InPara* InPara, SAO2_OutPara* OutPara, AlgData_t thre_
 {
 	AlgData_t* Spo2 = InPara->Spo2;
 	AlgData_t spo2_mean = OutPara->Static.Spo2Avg;
-	for (int i = 0; i < InPara->len; i++)
+	for (int i = 1; i < InPara->len; i++)
 	{
+		if (Spo2[i] <= 37)
+		{
+			continue;
+		}
 		if (Spo2[i] < thre_min_spo2)
 		{
 			int spo2_start_pt = 0;
 			AlgData_t spo2_start_val = 0;
-			for (int j = i; j > 0; j--)
+			for (int j = MAX(i-1,0); j > 0; j--)
 			{
+				if (Spo2[j] <= 37)
+				{
+					spo2_start_pt = j + 1;
+					spo2_start_val = Spo2[j + 1];
+					break;
+				}
 				if (Spo2[j] >= spo2_mean - 3)
 				{
 					spo2_start_pt = j;
@@ -2823,15 +2894,17 @@ void smooth_spo2_ODI(SAO2_InPara* InPara, SAO2_OutPara* OutPara, AlgData_t thre_
 					break;
 				}
 			}
-			//if (spo2_start_pt == 0)
-			//{
-			//	get_max_spo2(Spo2, i, &spo2_start_val, &spo2_start_pt);
-			//}
 
 			int spo2_end_pt = 0;
 			AlgData_t spo2_end_val = 0;
 			for (int j = i; j < InPara->len; j++)
 			{
+				if (Spo2[j] <= 37)
+				{
+					spo2_end_pt = j - 1;
+					spo2_end_val = Spo2[j - 1];
+					break;
+				}
 				if (Spo2[j] >= spo2_mean - 3)
 				{
 					spo2_end_pt = j;
@@ -2898,6 +2971,14 @@ void Proc_Schedule(SAO2_InPara* InPara, Proc_Para* Procpara, SAO2_OutPara* OutPa
 
 	proc_Acc(Acc, inlen);
 
+	for (int i = 0; i < inlen; i++)
+	{
+		if (Spo2[i] <= 37)
+		{
+			Spo2[i] = 0;
+		}
+	}
+
 	Sao2_preproc(Spo2, inlen);
 
 	AlgData_t MinuteMaxSpo2;
@@ -2947,10 +3028,11 @@ void Proc_Schedule(SAO2_InPara* InPara, Proc_Para* Procpara, SAO2_OutPara* OutPa
 		return;
 	}
 
+	SmoothOffhand(Spo2, Hr, VldSpo2Maxth, inlen);
+
 	memcpy(Spo2Bck, Spo2, 4 * inlen);
 	memcpy(HeartRateBck, Hr, inlen);
 
-	SmoothOffhand(Spo2, Hr, VldSpo2Maxth,inlen);
 	smooth_Spo2(Spo2, inlen, MAX(MinuteMeanDec/2, 3), VldSpo2Maxth);
 
 	SmoothMove(Spo2 + startp, Acc + startp, len, VldSpo2Maxth);
@@ -2965,9 +3047,13 @@ void Proc_Schedule(SAO2_InPara* InPara, Proc_Para* Procpara, SAO2_OutPara* OutPa
 	{
 		averagepoint(Spo2 + startp, len, 4);
 	}
+
 	for (int i = 1; i < inlen - 1; i++)
 	{
-		Hr[i] = (Hr[i - 1] + Hr[i] + Hr[i + 1]) / 3;
+		if (Hr[i] > 0 && Hr[i - 1] > 0 && Hr[i + 1] > 0)
+		{
+			Hr[i] = (Hr[i - 1] + Hr[i] + Hr[i + 1]) / 3;
+		}
 	}
 
 	int dips3 = get_Spo2event(Spo2 + startp, len, 4, OutPara->SEvent, ODI_peak, 2);
@@ -3165,9 +3251,7 @@ void parse_pr_spo2(char* data_in, int data_len, void* pr_spo2_result)
 		return;
 	}
 
-	// data_in_startime = *((unsigned int*)data_in + startsp / sizeof(unsigned int)); // start time of data_in
-	data_in_startime = ((data_in[startsp+3] & 0xff) << 24) | ((data_in[startsp+2] & 0xff) << 16) 
-	| (((data_in[startsp+1] & 0xff) << 8)) | (data_in[startsp] & 0xff);
+	data_in_startime = *((unsigned int*)(data_in + startsp)); // start time of data_in
 
 	if (data_len < spo2_analysis->data_block_size)
 	{
@@ -3207,7 +3291,7 @@ void parse_pr_spo2(char* data_in, int data_len, void* pr_spo2_result)
 		}
 		else
 		{
-			spo2_analysis->time[spo2_analysis->length_time] = *((unsigned int*)data_in + i / sizeof(unsigned int));
+			spo2_analysis->time[spo2_analysis->length_time] = *((unsigned int*)(data_in + i));
 		}
 
 		if (spo2_analysis->app_define.stage_endtime >= spo2_analysis->time[spo2_analysis->length_time] && spo2_analysis->app_define.stage_endtime < spo2_analysis->time[spo2_analysis->length_time] + spo2_analysis->data_block_elenum)
