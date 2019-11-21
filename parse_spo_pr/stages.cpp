@@ -2486,6 +2486,10 @@ void get_max_spo2(AlgData_t* Spo2, int inlen, AlgData_t* maxval, int* maxid)
 	int tmpmaxid = 0;
 	for (int i = 0; i < inlen; i++)
 	{
+		if (Spo2[i] <= 37)
+		{
+			break;
+		}
 		if (Spo2[i] >= tmpmaxval)
 		{
 			tmpmaxval = Spo2[i];
@@ -2506,6 +2510,10 @@ void get_max_after(AlgData_t* Spo2, int inlen, AlgData_t thre_spo2, AlgData_t* m
 	int tmpmaxid = 0;
 	for (int i = 0; i < inlen; i++)
 	{
+		if (Spo2[i] <= 37)
+		{
+			break;
+		}
 		if (Spo2[i] >= thre_spo2)
 		{
 			tmpmaxval = Spo2[i];
@@ -2523,12 +2531,16 @@ void fix_low_spo2val(AlgData_t* Spo2, int begin_pt, AlgData_t begin_val, int end
 	int cnt = 0;
 	for (int i = begin_pt; i < end_pt; i++)
 	{
+		if (Spo2[i] <= 37)
+		{
+			continue;
+		}
 		Spo2[i] = Spo2[begin_pt] + tmpgap * cnt;
 		cnt++;
 	}
 }
 
-void get_proc_lowspo2(AlgData_t* Spo2, int inlen, uint8_t* status)
+void get_proc_lowspo2(AlgData_t* Spo2, int spo2_len, int inlen, uint8_t* status)
 {
 	int wake_mint_start = 0;
 	int wake_mint_end = 0;
@@ -2540,19 +2552,32 @@ void get_proc_lowspo2(AlgData_t* Spo2, int inlen, uint8_t* status)
 			wake_mint_start = i;
 			wake_flg = 1;
 		}
-		if (status[i] != STATUS_WAKE && wake_flg == 1)
+		if ((status[i] != STATUS_WAKE || i == (inlen - 1)) && wake_flg == 1)
 		{
 			wake_mint_end = i;
 			wake_flg = 0;
 			int wake_sec_start = MAX((wake_mint_start - 1) * 60, 0);
-			int wake_sec_end = wake_mint_end * 60;
+			int wake_sec_end = (wake_mint_end + 1) * 60;
+			if (abs(spo2_len - wake_sec_end) < 60)
+			{
+				wake_sec_end = MAX(spo2_len, wake_sec_end);
+			}
 			int j = wake_sec_start;
 			while(j < wake_sec_end)
 			{
+				if (Spo2[j] <= 37)
+				{
+					j++;
+					continue;
+				}
 				AlgData_t tmp_max_spo2 = Spo2[j];
 				int tmp_max_spo2id = j;
 				for (int nm = j; nm < j + 30 && nm < wake_sec_end; nm++)
 				{
+					if (Spo2[nm] <= 37)
+					{
+						break;
+					}
 					if (tmp_max_spo2 > Spo2[nm] + 3)
 					{
 						get_max_spo2(Spo2 + j, (nm - j), &tmp_max_spo2, &tmp_max_spo2id);
@@ -2564,7 +2589,18 @@ void get_proc_lowspo2(AlgData_t* Spo2, int inlen, uint8_t* status)
 						if (max_after_spo2id > nm)
 						{
 							fix_low_spo2val(Spo2, tmp_max_spo2id, tmp_max_spo2, max_after_spo2id, max_after_spo2);
-							j = max_after_spo2id;
+							j = max_after_spo2id - 2;
+							break;
+						}
+						else
+						{
+							int smooth_step = j + 30;
+							for (int nnm = tmp_max_spo2id; nnm < smooth_step && nnm < wake_sec_end; nnm++)
+							{
+								Spo2[nnm] = tmp_max_spo2;
+							}
+							j = MIN(smooth_step, wake_sec_end) - 2;
+							break;
 						}
 					}
 				}
@@ -3068,7 +3104,7 @@ void Proc_Schedule(SAO2_InPara* InPara, Proc_Para* Procpara, SAO2_OutPara* OutPa
 	
 	get_sleepstatus(InPara, Procpara, OutPara);
 //proc with wake spo2
-	get_proc_lowspo2(Spo2 + startp, OutPara->MinuteCnt, OutPara->status);
+	get_proc_lowspo2(Spo2 + startp, OutPara->Static.endpos, OutPara->MinuteCnt, OutPara->status);
 
 	get_StaticResult(InPara, Procpara, OutPara);
 	if (OutPara->Static.diffThdLge3Pr <= 6 && OutPara->Static.Spo2Avg > 90)

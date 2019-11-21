@@ -15,16 +15,15 @@ int main(int, char **)
 
     // for (int i = 20 - 1; i >= 0; i--)
     // {
-    //     const char *filepath =
-    //         "/Users/mega/A-file/py-bins/1_5c7c6056ac502e00668fdad3_1551630599.bin";
-    //     read_from_path(filepath);
+        // const char *filepath =
+        //     "/Volumes/ssd_hub/Z-dev/bins/py-bins/1_5b4e7314d50eee00319f8eec_1531833780.bin";
+        // read_from_path(filepath);
     // }
 
     // const char *bin_dir = "/Volumes/ssd_hub/Z-dev/bins/new_old/";
     const char *bin_dir = "/Volumes/ssd_hub/Z-dev/bins/py-bins/";
+    // const char *bin_dir = "/Volumes/ssd_hub/Z-dev/bins/bins-pass/";
     read_dir(bin_dir);
-    
-
 
     return 0;
 }
